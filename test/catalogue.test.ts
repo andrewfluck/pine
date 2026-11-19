@@ -525,6 +525,20 @@ test("cache: the same tools are declared in one order", () => {
 	assert.equal(JSON.stringify(a), JSON.stringify(b));
 });
 
+test("a strict declaration keeps its schema, so that Anthropic takes it", () => {
+	// As pi sends its built-in tools to Anthropic on a Claude subscription: Claude Code's names, strict.
+	const schema = { type: "object", properties: { path: { type: "string", description: "Path to the file. ".repeat(20) }, limit: { anyOf: [{ type: "number" }, { type: "null" }] } }, required: ["path", "limit"], additionalProperties: false };
+	const sent = shortDeclarations({ tools: [{ name: "zeta", description: "z.", input_schema: schema }, { name: "Read", description: "Read a file. ".repeat(50), strict: true, input_schema: schema }] });
+	const read = sent.tools[0];
+	assert.equal(read.name, "Read", "pine's order holds for Claude Code's names");
+	assert.deepEqual(read.input_schema, schema, "Anthropic refuses a strict schema without additionalProperties: false");
+	assert.ok(read.description.length < 300, "its description is still pine's short one");
+	assert.equal(sent.tools[1].input_schema.additionalProperties, undefined, "a declaration that is not strict is shortened as before");
+	// The same for OpenAI's form.
+	const openai = shortDeclarations({ tools: [{ type: "function", function: { name: "read", description: "r.", strict: true, parameters: schema } }] });
+	assert.deepEqual(openai.tools[0].function.parameters, schema);
+});
+
 test("arguments that are nearly right are taken as what was meant, and only those", () => {
 	// A name as the owner says it.
 	assert.equal(ease("add_schedule", { name: "Check mail", task: "x" }).name, "check-mail");

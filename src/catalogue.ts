@@ -361,16 +361,26 @@ const LAST = ["pine_list", "pine_other", "pine_mcp", "pine_skills", "pine_source
 export function shortDeclarations(payload: any, asIs: Set<string> = new Set()): any {
 	if (!payload || !Array.isArray(payload.tools)) return payload;
 	const nameOf = (t: any): string => t?.function?.name ?? t?.name ?? "";
-	const rank = (t: any) => (FIRST.includes(nameOf(t)) ? FIRST.indexOf(nameOf(t)) : LAST.includes(nameOf(t)) ? 3000 + LAST.indexOf(nameOf(t)) : nameOf(t).startsWith("mcp__") ? 2000 : 1000);
+	// A provider may declare pi's tools by other names (on a Claude subscription, Claude Code's: "Read",
+	// "Bash"): pine's words for a tool are found by its own name all the same.
+	const known = (t: any): string => (FIRST.includes(nameOf(t).toLowerCase()) ? nameOf(t).toLowerCase() : nameOf(t));
+	const rank = (t: any) => (FIRST.includes(known(t)) ? FIRST.indexOf(known(t)) : LAST.includes(nameOf(t)) ? 3000 + LAST.indexOf(nameOf(t)) : nameOf(t).startsWith("mcp__") ? 2000 : 1000);
 	const ordered = [...payload.tools].sort((a: any, b: any) => rank(a) - rank(b) || (nameOf(a) < nameOf(b) ? -1 : nameOf(a) > nameOf(b) ? 1 : 0));
 	return {
 		...payload,
 		tools: ordered.map((t: any) => {
 			if (asIs.has(nameOf(t))) return t;
-			if (t?.function?.name) return { ...t, function: { ...t.function, ...shortTool(t.function.name, t.function.description ?? "", t.function.parameters) } };
+			// A strict declaration (pi sends its built-in tools that way where the provider samples to the
+			// schema) keeps its schema as pi made it: the provider refuses one without
+			// `additionalProperties: false` on every object, and an optional argument there is one that
+			// may be null. Only its description is shortened.
+			if (t?.function?.name) {
+				const s = shortTool(known(t), t.function.description ?? "", t.function.parameters);
+				return { ...t, function: { ...t.function, description: s.description, ...(t.function.strict ? {} : { parameters: s.parameters }) } };
+			}
 			if (t?.name && t.input_schema) {
-				const s = shortTool(t.name, t.description ?? "", t.input_schema);
-				return { ...t, description: s.description, input_schema: s.parameters };
+				const s = shortTool(known(t), t.description ?? "", t.input_schema);
+				return { ...t, description: s.description, ...(t.strict ? {} : { input_schema: s.parameters }) };
 			}
 			return t;
 		}),
